@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import TemplateEditor from '../template/TemplateEditor';
 import DataDisplay from '../results/DataDisplay';
+import UnifiedDashboard from '../results/UnifiedDashboard';
 import BoundingBoxTable from '../pdf/BoundingBoxTable';
+import EnhancedPDFTableLinker from '../results/EnhancedPDFTableLinker';
 import Cost from './Cost';
 import { 
   processPhrase, 
@@ -29,6 +31,7 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
   const [timerInterval, setTimerInterval] = useState(null);
   const [stageIndividualCosts, setStageIndividualCosts] = useState({ phrase: null, field: null, template: null, extraction: null });
   const [totalCumulativeCost, setTotalCumulativeCost] = useState(0);
+  const [showUnifiedDashboard, setShowUnifiedDashboard] = useState(false);
   
   // Add caching for already processed stages
   const [cachedResults, setCachedResults] = useState({
@@ -732,11 +735,14 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
                 </div>
               )}
               
-              {/* Bounding Box Table (only for phrase stage) */}
-              {activeStage === 'phrase' && (
+              {/* Enhanced PDF-Table Linker (only for phrase stage) */}
+              {activeStage === 'phrase' && boundingBoxData && boundingBoxData.length > 0 && (
                 <div className="mt-8">
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Phrase Bounding Boxes</h3>
-                  <BoundingBoxTable boundingBoxData={boundingBoxData} />
+                  <EnhancedPDFTableLinker
+                    pdfFile={files && files.length > 0 ? files[0] : null}
+                    boundingBoxData={boundingBoxData}
+                    tableData={boundingBoxData}
+                  />
                 </div>
               )}
             </div>
@@ -792,8 +798,29 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
           {/* Data Display */}
           {activeStage === 'extraction' && processedData && (
             <div>
-              {/* Pass the final total cumulative cost */}
-              <DataDisplay data={processedData} cost={totalCumulativeCost} />
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">View Options</h3>
+                <button
+                  onClick={() => setShowUnifiedDashboard(!showUnifiedDashboard)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    showUnifiedDashboard
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  {showUnifiedDashboard ? '📊 Standard View' : '🎯 Unified Dashboard'}
+                </button>
+              </div>
+              
+              {showUnifiedDashboard ? (
+                <UnifiedDashboard
+                  extractedData={processedData}
+                  templateData={templateData || editedTemplate}
+                  pdfUrl={files && files.length > 0 ? URL.createObjectURL(files[0]) : null}
+                />
+              ) : (
+                <DataDisplay data={processedData} cost={totalCumulativeCost} />
+              )}
             </div>
           )}
         </div>

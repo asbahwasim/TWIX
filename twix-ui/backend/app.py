@@ -161,8 +161,8 @@ def predict_fields():
         
         result_folder = twix.extract.get_result_folder_path(pdf_paths)
         
-        # Use twix to predict fields
-        fields, cost = twix.predict_field(pdf_paths, result_folder)
+        # Use twix to predict fields with Azure model
+        fields, cost = twix.predict_field(pdf_paths, result_folder, LLM_model_name='gpt-4.1-mini-azure')
         
         return jsonify({
             'status': 'success',
@@ -189,8 +189,8 @@ def predict_template():
             pdf_paths.append(file_path)
         
         result_folder = twix.extract.get_result_folder_path(pdf_paths)
-        # Use twix to predict template
-        template, cost = twix.predict_template(pdf_paths, result_folder)
+        # Use twix to predict template with Azure model
+        template, cost = twix.predict_template(pdf_paths, result_folder, LLM_model_name='gpt-4.1-mini-azure')
         
         return jsonify({
             'status': 'success',

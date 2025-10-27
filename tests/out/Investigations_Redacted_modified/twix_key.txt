@@ -8,6 +8,7 @@ Location Of Occurrence
 Disposition
 Completed
 Recorded On Camera
+N/A
 Complainant
 DOB
 Gender

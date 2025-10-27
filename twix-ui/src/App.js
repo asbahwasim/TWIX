@@ -5,12 +5,14 @@ import PDFUploader from './components/pdf/PDFUploader';
 import PDFList from './components/pdf/PDFList';
 import ProcessingStages from './components/processing/ProcessingStages';
 import TwixApiTest from './components/TwixApiTest';
+import TestNewComponents from './TestNewComponents';
 
 function App() {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [currentStage, setCurrentStage] = useState('upload');
   const [processedData, setProcessedData] = useState(null);
   const [showApiTest, setShowApiTest] = useState(false);
+  const [showTestComponents, setShowTestComponents] = useState(false);
   const [status, setStatus] = useState({
     isProcessing: false,
     message: '',
@@ -66,9 +68,17 @@ function App() {
                 PDF Processing and Data Extraction Tool
               </p>
             </div>
+            <button
+              onClick={() => setShowTestComponents(!showTestComponents)}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+            >
+              {showTestComponents ? '← Back to Main' : '🧪 Test New Components'}
+            </button>
           </div>
 
-          {showApiTest ? (
+          {showTestComponents ? (
+            <TestNewComponents />
+          ) : showApiTest ? (
             <section className="mb-8">
               <TwixApiTest />
             </section>
@@ -81,7 +91,7 @@ function App() {
                 />
               </section>
 
-              {uploadedFiles.length > 0 && (
+              {uploadedFiles.length > 0 && currentStage === 'upload' && (
                 <section className="mb-8">
                   <PDFList 
                     files={uploadedFiles}

@@ -27,6 +27,7 @@ setup(
         "gurobipy",
         "openai",
         "flask-cors",
-        "PyPDF2"
+        "PyPDF2",
+        "python-dotenv"
     ],
 )

@@ -24,8 +24,8 @@
         "fields": [
             "DOB",
             "H Phone",
-            "Gender",
             "Address",
+            "Gender",
             "Complainant"
         ],
         "bid": [

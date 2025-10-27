@@ -366,8 +366,13 @@ def predict_field(data_files, result_folder, LLM_model_name = 'gpt-4o-mini'):
     page_number = get_page_number(raw_phrases_bb)
 
     #get image path
-    image_paths = get_image_path(result_folder)
-    LLM_fields = get_fields_by_LLM(image_paths)
+    # Skip vision model if OpenAI key not available
+    try:
+        image_paths = get_image_path(result_folder)
+        LLM_fields = get_fields_by_LLM(image_paths)
+    except Exception as e:
+        print(f'Skipping vision-based field detection (no OpenAI key): {e}')
+        LLM_fields = []
 
     raw_phrases = read_file(extracted_path)
     raw_phrases = set(raw_phrases)
@@ -379,7 +384,10 @@ def predict_field(data_files, result_folder, LLM_model_name = 'gpt-4o-mini'):
 
     print('Field prediction starts...')
     phrases = relative_locations
-    LLM_fields = set(LLM_fields).intersection(raw_phrases)
+    if LLM_fields:
+        LLM_fields = set(LLM_fields).intersection(raw_phrases)
+    else:
+        LLM_fields = set()  # Empty set if vision failed
 
     if page_number == 1:
         # if the document only has one page, there is no common location pattern can be learned, directly return LLM-predicted phrases
