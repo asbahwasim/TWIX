@@ -4,10 +4,9 @@ import Cost from '../processing/Cost';
 const DataDisplay = ({ data, cost, aggregatedTemplates }) => {
   const [processedData, setProcessedData] = useState([]);
   const [expandedDetails, setExpandedDetails] = useState({});
-  const [originalOrder, setOriginalOrder] = useState({});
-
-  // Dropdown for selecting template
+  const [originalOrderData, setOriginalOrderData] = useState([]);
   const [selectedTemplateIdx, setSelectedTemplateIdx] = useState(0);
+  const [viewMode, setViewMode] = useState('template'); // 'template' or 'sequential'
 
   useEffect(() => {
     // If the parent provided precomputed aggregated templates, prefer those
@@ -27,193 +26,86 @@ const DataDisplay = ({ data, cost, aggregatedTemplates }) => {
             })
           }]
         }));
-
-        setOriginalOrder(() => {
-          const order = {};
-          normalizedData.forEach((rec, recordIndex) => {
-            if (rec?.content && rec.content[0] && Array.isArray(rec.content[0].content) && rec.content[0].content[0]) {
-              order[`record_${recordIndex}_item_0`] = Object.keys(rec.content[0].content[0]);
-            }
-          });
-          return order;
-        });
-
         setProcessedData(normalizedData);
         setSelectedTemplateIdx(0);
-        return;
       } catch (e) {
         console.error('Failed to use aggregatedTemplates:', e);
-        // fallthrough to normal processing
       }
     }
     if (!data) {
-      console.log("No data provided");
       setProcessedData([]);
+      setOriginalOrderData([]);
       return;
     }
-
     try {
-      console.log("Data received:", data);
-      
       // Extract data from response
       let actualData = data;
-      
-      // Check for nested data structures
-      if (data.extractedData) {
-        actualData = data.extractedData;
-      } else if (data.data) {
-        actualData = data.data;
-      } else if (data.results) {
-        actualData = data.results;
-      }
-
-      // Log the actual data for debugging
-      console.log("Actual data after extraction:", actualData);
-
-      // Handle string data
+      if (data.extractedData) actualData = data.extractedData;
+      else if (data.data) actualData = data.data;
+      else if (data.results) actualData = data.results;
       let processedJson = actualData;
       if (typeof actualData === 'string') {
-        try {
-          processedJson = JSON.parse(actualData);
-        } catch (e) {
-          console.error("Failed to parse data string:", e);
-          return;
-        }
+        try { processedJson = JSON.parse(actualData); } catch (e) { return; }
       }
-
-      // Log the processed JSON for debugging
-      console.log("Processed JSON before normalization:", processedJson);
-
-      // Validate and normalize the data
       if (!processedJson) {
-        console.error("No valid data found in the response");
         setProcessedData([]);
+        setOriginalOrderData([]);
         return;
       }
-
-      // Handle different data structures
+      // Template view normalization (existing logic)
       let normalizedData = [];
-      let templates = new Map(); // Store unique templates
-      
+      let templates = new Map();
       if (processedJson.Investigations_Redacted_modified) {
-        // Handle the specific Investigations_Redacted_modified data structure
         const records = processedJson.Investigations_Redacted_modified;
         if (Array.isArray(records)) {
-            // First pass: Identify unique templates
-            // Some records are wrappers that contain nested `content` arrays. We'll recursively
-            // flatten such wrappers until we reach plain row objects (key/value maps) and
-            // group those rows by their field keys.
-            const flattenToRows = (node) => {
-              const rows = [];
-              if (!node) return rows;
-
-              if (Array.isArray(node)) {
-                node.forEach(n => rows.push(...flattenToRows(n)));
-                return rows;
+          // Flatten for template view
+          const flattenToRows = (node) => {
+            const rows = [];
+            if (!node) return rows;
+            if (Array.isArray(node)) { node.forEach(n => rows.push(...flattenToRows(n))); return rows; }
+            if (typeof node !== 'object') return rows;
+            if (Array.isArray(node.content) && node.content.length > 0) {
+              node.content.forEach(child => { rows.push(...flattenToRows(child)); }); return rows;
+            }
+            if (node.type === 'table' && Array.isArray(node.content)) {
+              node.content.forEach(child => rows.push(...flattenToRows(child))); return rows;
+            }
+            rows.push(node); return rows;
+          };
+          records.forEach(record => {
+            if (!record || typeof record !== 'object') return;
+            const innerRows = flattenToRows(record);
+            innerRows.forEach(innerRow => {
+              if (!innerRow || typeof innerRow !== 'object') return;
+              const keys = Object.keys(innerRow).sort().join(',');
+              if (!templates.has(keys)) {
+                templates.set(keys, { fields: keys.split(','), records: [] });
               }
-
-              if (typeof node !== 'object') return rows;
-
-              // If node has a content array, descend into its items
-              if (Array.isArray(node.content) && node.content.length > 0) {
-                node.content.forEach(child => {
-                  rows.push(...flattenToRows(child));
-                });
-                return rows;
-              }
-
-              // If node itself looks like a table container: { type: 'table', content: [...] }
-              if (node.type === 'table' && Array.isArray(node.content)) {
-                node.content.forEach(child => rows.push(...flattenToRows(child)));
-                return rows;
-              }
-
-              // Otherwise assume it's a plain row object (map of fields to values)
-              rows.push(node);
-              return rows;
-            };
-
-            records.forEach(record => {
-              if (!record || typeof record !== 'object') return;
-              const innerRows = flattenToRows(record);
-              innerRows.forEach(innerRow => {
-                if (!innerRow || typeof innerRow !== 'object') return;
-                const keys = Object.keys(innerRow).sort().join(',');
-                if (!templates.has(keys)) {
-                  templates.set(keys, {
-                    fields: keys.split(','),
-                    records: []
-                  });
-                }
-                templates.get(keys).records.push(innerRow);
-              });
+              templates.get(keys).records.push(innerRow);
             });
-          
-          console.log("Identified templates:", templates);
-          
-          // Convert templates to normalized format
+          });
           normalizedData = Array.from(templates.entries()).map(([templateKey, template], index) => {
             const fields = template.fields;
             const records = template.records;
-            
             return {
               id: index,
               templateId: templateKey,
-              content: [{
-                type: 'table',
-                content: records.map(record => {
-                  const normalizedRecord = {};
-                  fields.forEach(field => {
-                    normalizedRecord[field] = record[field] || 'N/A';
-                  });
-                  return normalizedRecord;
-                })
-              }]
+              content: [{ type: 'table', content: records.map(rec => {
+                const normalizedRecord = {};
+                fields.forEach(field => {
+                  normalizedRecord[field] = (rec && rec[field] !== undefined) ? rec[field] : 'N/A';
+                });
+                return normalizedRecord;
+              }) }]
             };
           });
+          setProcessedData(normalizedData);
+          setOriginalOrderData(records);
         }
-      } else if (Array.isArray(processedJson)) {
-        // If it's an array, normalize each item
-        normalizedData = processedJson
-          .filter(record => record !== null && typeof record === 'object')
-          .map((record, index) => ({
-            id: index,
-            content: [{
-              type: 'table',
-              content: [record]
-            }]
-          }));
-      } else if (typeof processedJson === 'object') {
-        // If it's an object, wrap it as a record
-        normalizedData = [{
-          id: 0,
-          content: [{
-            type: 'table',
-            content: [processedJson]
-          }]
-        }];
       }
-
-      console.log("Normalized data:", normalizedData);
-
-      const orderMap = {};
-
-      normalizedData.forEach((record, recordIndex) => {
-        if (record?.content) {
-          record.content.forEach((item, itemIndex) => {
-            if (item?.type === 'table' && Array.isArray(item.content) && item.content[0]) {
-              const itemKey = `record_${recordIndex}_item_${itemIndex}`;
-              orderMap[itemKey] = Object.keys(item.content[0]);
-            }
-          });
-        }
-      });
-
-      setOriginalOrder(orderMap);
-      setProcessedData(normalizedData);
-    } catch (error) {
-      console.error("Error processing data:", error);
+    } catch (e) {
       setProcessedData([]);
+      setOriginalOrderData([]);
     }
   }, [data]);
 
@@ -229,8 +121,8 @@ const DataDisplay = ({ data, cost, aggregatedTemplates }) => {
       return <div>No table data available</div>;
     }
 
-    const itemKey = `record_${recordIndex}_item_${itemIndex}`;
-    const columnOrder = originalOrder[itemKey] || Object.keys(tableContent[0]);
+  // Use keys from first row for column order
+  const columnOrder = Object.keys(tableContent[0]);
 
     return (
       <div className="overflow-x-auto">
@@ -306,20 +198,19 @@ const DataDisplay = ({ data, cost, aggregatedTemplates }) => {
     }
   };
 
-  if (!processedData || processedData.length === 0) {
+  // If both views are empty, show no data
+  if ((viewMode === 'template' && (!processedData || processedData.length === 0)) ||
+      (viewMode === 'sequential' && (!originalOrderData || originalOrderData.length === 0))) {
     return <div className="text-gray-500">No data available</div>;
   }
 
-  // Dropdown for template selection
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-xl font-bold">Extracted Data</h2>
-          {(!processedData || processedData.length === 0) && (
-            <p className="text-sm text-gray-500 mt-1">No valid data available</p>
-          )}
         </div>
+        {/* Download button remains unchanged */}
         {processedData && processedData.length > 0 && (
           <button
             onClick={handleDownload}
@@ -333,66 +224,98 @@ const DataDisplay = ({ data, cost, aggregatedTemplates }) => {
         )}
       </div>
 
-      {/* Template selection dropdown */}
-      <div className="mb-6">
-        <label htmlFor="template-select" className="mr-2 font-medium text-gray-700">Select Template:</label>
-        <select
-          id="template-select"
-          value={selectedTemplateIdx}
-          onChange={e => setSelectedTemplateIdx(Number(e.target.value))}
-          className="px-2 py-1 border rounded"
+      {/* Toggle for Sequential/Template View */}
+      <div className="mb-6 flex items-center gap-4">
+        <label className="font-medium text-gray-700">View Mode:</label>
+        <button
+          className={`px-3 py-1 rounded ${viewMode === 'template' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+          onClick={() => setViewMode('template')}
         >
-          {processedData.map((record, idx) => (
-            <option key={record.templateId || idx} value={idx}>
-              {record.templateId || `Template ${idx + 1}`}
-            </option>
-          ))}
-        </select>
+          Template View
+        </button>
+        <button
+          className={`px-3 py-1 rounded ${viewMode === 'sequential' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+          onClick={() => setViewMode('sequential')}
+        >
+          Sequential View
+        </button>
       </div>
 
-      {/* Only show the selected template's table */}
-      {processedData[selectedTemplateIdx] && (
-        <div key={`record-${selectedTemplateIdx}`} className="mb-10 pb-6 border-b border-gray-200">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800">
-                {processedData[selectedTemplateIdx].templateId || `Template ${selectedTemplateIdx + 1}`}
-              </h3>
-              <p className="text-sm text-gray-500">
-                {Array.isArray(processedData[selectedTemplateIdx].content) && processedData[selectedTemplateIdx].content[0] && Array.isArray(processedData[selectedTemplateIdx].content[0].content)
-                  ? `${processedData[selectedTemplateIdx].content[0].content.length} records found`
-                  : ''}
-              </p>
-            </div>
-            <button 
-              onClick={() => setExpandedDetails(prev => ({ ...prev, [selectedTemplateIdx]: !prev[selectedTemplateIdx] }))}
-              className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
+      {/* Template View: Dropdown and Table */}
+      {viewMode === 'template' && (
+        <>
+          <div className="mb-6">
+            <label htmlFor="template-select" className="mr-2 font-medium text-gray-700">Select Template:</label>
+            <select
+              id="template-select"
+              value={selectedTemplateIdx}
+              onChange={e => setSelectedTemplateIdx(Number(e.target.value))}
+              className="px-2 py-1 border rounded"
             >
-              {expandedDetails[selectedTemplateIdx] ? 'Hide Details' : 'View Details'}
-              <svg className={`ml-1 h-4 w-4 transform ${expandedDetails[selectedTemplateIdx] ? 'rotate-180' : ''}`} fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </button>
-          </div>
-
-          {expandedDetails[selectedTemplateIdx] && (
-            <div className="space-y-4">
-              {processedData[selectedTemplateIdx].content?.map((item, itemIndex) => (
-                <div key={`content-${selectedTemplateIdx}-${itemIndex}`} className="bg-white border rounded-lg shadow-sm">
-                  <div className="p-4 bg-gray-50 border-b">
-                    <h4 className="font-medium text-gray-700">
-                      {item.type === 'table' ? 'Table Data' : 'Key-Value Data'}
-                    </h4>
-                  </div>
-                  <div className="p-4">
-                    {item.type === 'table' 
-                      ? renderTableContent(item.content, selectedTemplateIdx, itemIndex) 
-                      : renderKVContent(item.content)}
-                  </div>
-                </div>
+              {processedData.map((record, idx) => (
+                <option key={record.templateId || idx} value={idx}>
+                  {`Template ${idx + 1}`}
+                </option>
               ))}
+            </select>
+          </div>
+          {/* Only show the selected template's table */}
+          {processedData[selectedTemplateIdx] && (
+            <div key={`record-${selectedTemplateIdx}`} className="mb-10 pb-6 border-b border-gray-200">
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    {`Template ${selectedTemplateIdx + 1}`}
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    {Array.isArray(processedData[selectedTemplateIdx].content) && processedData[selectedTemplateIdx].content[0] && Array.isArray(processedData[selectedTemplateIdx].content[0].content)
+                      ? `${processedData[selectedTemplateIdx].content[0].content.length} records found`
+                      : ''}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setExpandedDetails(prev => ({ ...prev, [selectedTemplateIdx]: !prev[selectedTemplateIdx] }))}
+                  className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
+                >
+                  {expandedDetails[selectedTemplateIdx] ? 'Hide Details' : 'View Details'}
+                  <svg className={`ml-1 h-4 w-4 transform ${expandedDetails[selectedTemplateIdx] ? 'rotate-180' : ''}`} fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+              {expandedDetails[selectedTemplateIdx] && (
+                <div className="space-y-4">
+                  {processedData[selectedTemplateIdx].content?.map((item, itemIndex) => (
+                    <div key={`content-${selectedTemplateIdx}-${itemIndex}`} className="bg-white border rounded-lg shadow-sm">
+                      <div className="p-4 bg-gray-50 border-b">
+                        <h4 className="font-medium text-gray-700">
+                          {item.type === 'table' ? 'Table Data' : 'Key-Value Data'}
+                        </h4>
+                      </div>
+                      <div className="p-4">
+                        {item.type === 'table' 
+                          ? renderTableContent(item.content, selectedTemplateIdx, itemIndex) 
+                          : renderKVContent(item.content)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
+        </>
+      )}
+
+      {/* Sequential View: Show extracted data in original order/hierarchy */}
+      {viewMode === 'sequential' && (
+        <div className="mb-10 pb-6 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">Sequential View</h3>
+          {/* Render each record in originalOrderData as JSON tree or table */}
+          {originalOrderData.map((record, idx) => (
+            <div key={`seq-record-${idx}`} className="mb-6">
+              <pre className="bg-gray-50 p-4 rounded text-xs overflow-x-auto border">{JSON.stringify(record, null, 2)}</pre>
+            </div>
+          ))}
         </div>
       )}
 
