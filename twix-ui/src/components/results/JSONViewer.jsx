@@ -38,12 +38,36 @@ const JSONViewer = ({ data, onItemClick, selectedPath }) => {
     alert('JSON copied to clipboard!');
   };
 
-  const downloadJSON = () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const downloadJSON = (type = 'extracted') => {
+    // Get the appropriate data based on type
+    let downloadData = data;
+    let filename = 'extracted_data.json';
+    
+    if (type === 'aggregated') {
+      // Transform the data into aggregated format
+      const templates = {};
+      data.forEach(record => {
+        record.forEach(item => {
+          const signature = JSON.stringify(Object.keys(item.content[0]).sort());
+          if (!templates[signature]) {
+            templates[signature] = [];
+          }
+          templates[signature].push(item);
+        });
+      });
+      
+      downloadData = {
+        templates,
+        sequential: data
+      };
+      filename = 'aggregated_data.json';
+    }
+
+    const blob = new Blob([JSON.stringify(downloadData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'data.json';
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -173,6 +197,20 @@ const JSONViewer = ({ data, onItemClick, selectedPath }) => {
             title="Copy to Clipboard"
           >
             📋
+          </button>
+          <button
+            onClick={() => downloadJSON('extracted')}
+            className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+            title="Download Extracted Data"
+          >
+            Download Extracted
+          </button>
+          <button
+            onClick={() => downloadJSON('aggregated')}
+            className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 ml-2"
+            title="Download Aggregated Data"
+          >
+            Download Aggregated
           </button>
           <button
             onClick={downloadJSON}

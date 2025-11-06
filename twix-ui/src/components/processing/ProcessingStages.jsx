@@ -22,6 +22,7 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
   const [boundingBoxData, setBoundingBoxData] = useState([]);
   const [error, setError] = useState(null);
   const [processedData, setProcessedData] = useState(null);
+  const [aggregatedTemplates, setAggregatedTemplates] = useState(null);
   const [activeStage, setActiveStage] = useState(null);
   const [showResults, setShowResults] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -155,6 +156,47 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
     }
   ];
 
+  // Download handlers for extraction stage
+  const handleDownloadAggregated = () => {
+    try {
+      if (!aggregatedTemplates) {
+        console.warn('No aggregated templates available to download');
+        return;
+      }
+      const blob = new Blob([JSON.stringify({ templates: aggregatedTemplates }, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'aggregated_templates.json';
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (e) {
+      console.error('Failed to download aggregated templates:', e);
+    }
+  };
+
+  const handleDownloadExtracted = () => {
+    try {
+      if (!processedData) {
+        console.warn('No extracted data available to download');
+        return;
+      }
+      const blob = new Blob([JSON.stringify(processedData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'extracted_data.json';
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (e) {
+      console.error('Failed to download extracted data:', e);
+    }
+  };
+
   const handleStageClick = async (stage) => {
     try {
       // Hide results first for a smoother transition
@@ -203,6 +245,9 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
           setEditedTemplate(cachedResults.template.editedTemplate);
         } else if (stage === 'extraction') {
           setProcessedData(cachedResults.extraction.processedData);
+          if (cachedResults.extraction.aggregatedTemplates) {
+            setAggregatedTemplates(cachedResults.extraction.aggregatedTemplates);
+          }
         }
         
         setShowResults(true);
@@ -486,6 +531,86 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
         
         console.log("Processed extraction data:", extractedData);
         setProcessedData(extractedData);
+
+        // Build aggregated templates from extracted data so UI/Downloads can use them
+        try {
+          const flattenToRows = (node) => {
+            const rows = [];
+            if (!node) return rows;
+            if (Array.isArray(node)) {
+              node.forEach(n => rows.push(...flattenToRows(n)));
+              return rows;
+            }
+            if (typeof node !== 'object') return rows;
+            if (Array.isArray(node.content) && node.content.length > 0) {
+              node.content.forEach(child => rows.push(...flattenToRows(child)));
+              return rows;
+            }
+            if (node.type === 'table' && Array.isArray(node.content)) {
+              node.content.forEach(child => rows.push(...flattenToRows(child)));
+              return rows;
+            }
+            // plain row object
+            rows.push(node);
+            return rows;
+          };
+
+          // Collect all candidate row objects from extractedData
+          const allRows = [];
+          const collect = (obj) => {
+            if (!obj) return;
+            if (Array.isArray(obj)) {
+              obj.forEach(item => collect(item));
+              return;
+            }
+            if (typeof obj === 'object') {
+              // If object is a mapping of file -> records, iterate values
+              const maybeArrayValues = Object.values(obj);
+              // Heuristic: if top-level is mapping of arrays, flatten those arrays
+              if (maybeArrayValues.length > 0 && maybeArrayValues.every(v => Array.isArray(v))) {
+                maybeArrayValues.forEach(v => v.forEach(rec => allRows.push(...flattenToRows(rec))));
+                return;
+              }
+              // Otherwise attempt to flatten this object itself
+              allRows.push(...flattenToRows(obj));
+            }
+          };
+
+          collect(extractedData);
+
+          // Group rows by their sorted key set
+          const templatesMap = new Map();
+          allRows.forEach(row => {
+            if (!row || typeof row !== 'object') return;
+            const keys = Object.keys(row).sort();
+            const key = keys.join(',');
+            if (!templatesMap.has(key)) templatesMap.set(key, { fields: keys, records: [] });
+            templatesMap.get(key).records.push(row);
+          });
+
+          const templatesArray = Array.from(templatesMap.entries()).map(([key, val], idx) => ({
+            templateId: `template_${idx}`,
+            key,
+            fields: val.fields,
+            records: val.records
+          }));
+
+          setAggregatedTemplates(templatesArray);
+
+          // Cache aggregated templates as part of extraction cache
+          setCachedResults(prev => ({
+            ...prev,
+            extraction: {
+              data,
+              processedData: extractedData,
+              aggregatedTemplates: templatesArray,
+              cost: currentStageCost
+            }
+          }));
+        } catch (err) {
+          console.error('Failed to build aggregated templates:', err);
+          setAggregatedTemplates(null);
+        }
         
         // Cache the results including cost
         setCachedResults(prev => ({
@@ -800,16 +925,34 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
             <div>
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold text-gray-800">View Options</h3>
-                <button
-                  onClick={() => setShowUnifiedDashboard(!showUnifiedDashboard)}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    showUnifiedDashboard
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  {showUnifiedDashboard ? '📊 Standard View' : '🎯 Unified Dashboard'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowUnifiedDashboard(!showUnifiedDashboard)}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                      showUnifiedDashboard
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    {showUnifiedDashboard ? 'Standard View' : 'Unified Dashboard'}
+                  </button>
+
+                  <button
+                    onClick={handleDownloadAggregated}
+                    className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                    title="Download aggregated templates as JSON"
+                  >
+                    Download Aggregated
+                  </button>
+
+                  <button
+                    onClick={handleDownloadExtracted}
+                    className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm"
+                    title="Download raw extracted data as JSON"
+                  >
+                    Download Extracted
+                  </button>
+                </div>
               </div>
               
               {showUnifiedDashboard ? (
@@ -819,7 +962,7 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
                   pdfUrl={files && files.length > 0 ? URL.createObjectURL(files[0]) : null}
                 />
               ) : (
-                <DataDisplay data={processedData} cost={totalCumulativeCost} />
+                <DataDisplay data={processedData} aggregatedTemplates={aggregatedTemplates} cost={totalCumulativeCost} />
               )}
             </div>
           )}

@@ -23,10 +23,10 @@
         "type": "kv",
         "fields": [
             "DOB",
-            "H Phone",
-            "Address",
             "Gender",
-            "Complainant"
+            "Complainant",
+            "Address",
+            "H Phone"
         ],
         "bid": [
             1

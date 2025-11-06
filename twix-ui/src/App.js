@@ -5,14 +5,11 @@ import PDFUploader from './components/pdf/PDFUploader';
 import PDFList from './components/pdf/PDFList';
 import ProcessingStages from './components/processing/ProcessingStages';
 import TwixApiTest from './components/TwixApiTest';
-import TestNewComponents from './TestNewComponents';
 
 function App() {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [currentStage, setCurrentStage] = useState('upload');
   const [processedData, setProcessedData] = useState(null);
-  const [showApiTest, setShowApiTest] = useState(false);
-  const [showTestComponents, setShowTestComponents] = useState(false);
   const [status, setStatus] = useState({
     isProcessing: false,
     message: '',
@@ -68,53 +65,38 @@ function App() {
                 PDF Processing and Data Extraction Tool
               </p>
             </div>
-            <button
-              onClick={() => setShowTestComponents(!showTestComponents)}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
-            >
-              {showTestComponents ? '← Back to Main' : '🧪 Test New Components'}
-            </button>
           </div>
-
-          {showTestComponents ? (
-            <TestNewComponents />
-          ) : showApiTest ? (
+          <>
             <section className="mb-8">
-              <TwixApiTest />
+              <PDFUploader 
+                onUpload={setUploadedFiles}
+                disabled={status.isProcessing}
+              />
             </section>
-          ) : (
-            <>
-              <section className="mb-8">
-                <PDFUploader 
-                  onUpload={setUploadedFiles}
-                  disabled={status.isProcessing}
-                />
-              </section>
 
-              {uploadedFiles.length > 0 && currentStage === 'upload' && (
-                <section className="mb-8">
-                  <PDFList 
-                    files={uploadedFiles}
-                    onRemove={(index) => {
-                      setUploadedFiles(files => 
-                        files.filter((_, i) => i !== index)
-                      );
-                    }}
-                  />
-                </section>
-              )}
-
+            {uploadedFiles.length > 0 && currentStage === 'upload' && (
               <section className="mb-8">
-                <ProcessingStages
-                  currentStage={currentStage}
-                  onStageChange={handleStageChange}
-                  onProcessingStart={handleProcessingStart}
-                  disabled={status.isProcessing || !uploadedFiles.length}
+                <PDFList 
                   files={uploadedFiles}
+                  onRemove={(index) => {
+                    setUploadedFiles(files => 
+                      files.filter((_, i) => i !== index)
+                    );
+                  }}
                 />
               </section>
-            </>
-          )}
+            )}
+
+            <section className="mb-8">
+              <ProcessingStages
+                currentStage={currentStage}
+                onStageChange={handleStageChange}
+                onProcessingStart={handleProcessingStart}
+                disabled={status.isProcessing || !uploadedFiles.length}
+                files={uploadedFiles}
+              />
+            </section>
+          </>
         </div>
       </main>
 
