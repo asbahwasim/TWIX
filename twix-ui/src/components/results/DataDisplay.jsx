@@ -6,6 +6,9 @@ const DataDisplay = ({ data, cost, aggregatedTemplates }) => {
   const [expandedDetails, setExpandedDetails] = useState({});
   const [originalOrder, setOriginalOrder] = useState({});
 
+  // Dropdown for selecting template
+  const [selectedTemplateIdx, setSelectedTemplateIdx] = useState(0);
+
   useEffect(() => {
     // If the parent provided precomputed aggregated templates, prefer those
     if (aggregatedTemplates && Array.isArray(aggregatedTemplates) && aggregatedTemplates.length > 0) {
@@ -36,6 +39,7 @@ const DataDisplay = ({ data, cost, aggregatedTemplates }) => {
         });
 
         setProcessedData(normalizedData);
+        setSelectedTemplateIdx(0);
         return;
       } catch (e) {
         console.error('Failed to use aggregatedTemplates:', e);
@@ -306,6 +310,7 @@ const DataDisplay = ({ data, cost, aggregatedTemplates }) => {
     return <div className="text-gray-500">No data available</div>;
   }
 
+  // Dropdown for template selection
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center mb-6">
@@ -328,34 +333,52 @@ const DataDisplay = ({ data, cost, aggregatedTemplates }) => {
         )}
       </div>
 
-      {processedData.map((record, recordIndex) => (
-        <div key={`record-${recordIndex}`} className="mb-10 pb-6 border-b border-gray-200">
+      {/* Template selection dropdown */}
+      <div className="mb-6">
+        <label htmlFor="template-select" className="mr-2 font-medium text-gray-700">Select Template:</label>
+        <select
+          id="template-select"
+          value={selectedTemplateIdx}
+          onChange={e => setSelectedTemplateIdx(Number(e.target.value))}
+          className="px-2 py-1 border rounded"
+        >
+          {processedData.map((record, idx) => (
+            <option key={record.templateId || idx} value={idx}>
+              {record.templateId || `Template ${idx + 1}`}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Only show the selected template's table */}
+      {processedData[selectedTemplateIdx] && (
+        <div key={`record-${selectedTemplateIdx}`} className="mb-10 pb-6 border-b border-gray-200">
           <div className="flex justify-between items-center mb-4">
             <div>
               <h3 className="text-lg font-semibold text-gray-800">
-                Template {record.id !== undefined ? record.id + 1 : recordIndex + 1}
+                {processedData[selectedTemplateIdx].templateId || `Template ${selectedTemplateIdx + 1}`}
               </h3>
               <p className="text-sm text-gray-500">
-                {Array.isArray(record.content) && record.content[0] && Array.isArray(record.content[0].content)
-                  ? `${record.content[0].content.length} records found`
+                {Array.isArray(processedData[selectedTemplateIdx].content) && processedData[selectedTemplateIdx].content[0] && Array.isArray(processedData[selectedTemplateIdx].content[0].content)
+                  ? `${processedData[selectedTemplateIdx].content[0].content.length} records found`
                   : ''}
               </p>
             </div>
             <button 
-              onClick={() => toggleDetails(recordIndex)}
+              onClick={() => setExpandedDetails(prev => ({ ...prev, [selectedTemplateIdx]: !prev[selectedTemplateIdx] }))}
               className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
             >
-              {expandedDetails[recordIndex] ? 'Hide Details' : 'View Details'}
-              <svg className={`ml-1 h-4 w-4 transform ${expandedDetails[recordIndex] ? 'rotate-180' : ''}`} fill="currentColor" viewBox="0 0 20 20">
+              {expandedDetails[selectedTemplateIdx] ? 'Hide Details' : 'View Details'}
+              <svg className={`ml-1 h-4 w-4 transform ${expandedDetails[selectedTemplateIdx] ? 'rotate-180' : ''}`} fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
               </svg>
             </button>
           </div>
 
-          {expandedDetails[recordIndex] && (
+          {expandedDetails[selectedTemplateIdx] && (
             <div className="space-y-4">
-              {record.content?.map((item, itemIndex) => (
-                <div key={`content-${recordIndex}-${itemIndex}`} className="bg-white border rounded-lg shadow-sm">
+              {processedData[selectedTemplateIdx].content?.map((item, itemIndex) => (
+                <div key={`content-${selectedTemplateIdx}-${itemIndex}`} className="bg-white border rounded-lg shadow-sm">
                   <div className="p-4 bg-gray-50 border-b">
                     <h4 className="font-medium text-gray-700">
                       {item.type === 'table' ? 'Table Data' : 'Key-Value Data'}
@@ -363,7 +386,7 @@ const DataDisplay = ({ data, cost, aggregatedTemplates }) => {
                   </div>
                   <div className="p-4">
                     {item.type === 'table' 
-                      ? renderTableContent(item.content, recordIndex, itemIndex) 
+                      ? renderTableContent(item.content, selectedTemplateIdx, itemIndex) 
                       : renderKVContent(item.content)}
                   </div>
                 </div>
@@ -371,7 +394,7 @@ const DataDisplay = ({ data, cost, aggregatedTemplates }) => {
             </div>
           )}
         </div>
-      ))}
+      )}
 
       {cost && <Cost cost={cost} />}
     </div>

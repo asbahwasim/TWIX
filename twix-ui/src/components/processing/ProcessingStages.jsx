@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import TemplateEditor from '../template/TemplateEditor';
 import DataDisplay from '../results/DataDisplay';
@@ -13,6 +14,43 @@ import {
   saveTemplate,
   cleanup 
 } from '../../services/api';
+
+// Utility: Merge kv-type templates by context/grouping
+function mergeKvTemplates(templates) {
+  // Heuristic: kv-type templates have few fields and share a context key (e.g., "Complainant", "DOB", "Gender", etc.)
+  // Group by context key (first field or a known context field)
+  // Identify kv-type templates (by id or known keys)
+  const kvTemplateIds = ["kv_Complainant", "kv_DOB", "kv_Gender", "kv_Address", "kv_H Phone"];
+  const kvTemplates = templates.filter(tpl => kvTemplateIds.includes(tpl.templateId));
+  const nonKvTemplates = templates.filter(tpl => !kvTemplateIds.includes(tpl.templateId));
+
+  if (kvTemplates.length === 0) return templates;
+
+  // Collect all unique fields
+  const allFields = Array.from(new Set(kvTemplates.flatMap(tpl => tpl.fields)));
+
+  // Merge records: align by index, fill missing fields as 'missing'
+  const maxRecords = Math.max(...kvTemplates.map(tpl => tpl.records.length));
+  const mergedRecords = [];
+  for (let i = 0; i < maxRecords; i++) {
+    const record = {};
+    allFields.forEach(field => {
+      // Find value from the corresponding template
+      const tpl = kvTemplates.find(t => t.fields.includes(field));
+      record[field] = tpl && tpl.records[i] && tpl.records[i][field] !== undefined ? tpl.records[i][field] : "missing";
+    });
+    mergedRecords.push(record);
+  }
+
+  const mergedKvTemplate = {
+    templateId: "template_kv",
+    key: allFields.join(","),
+    fields: allFields,
+    records: mergedRecords
+  };
+
+  return [mergedKvTemplate, ...nonKvTemplates];
+}
 
 function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disabled, files }) {
   const [templateData, setTemplateData] = useState(null);
@@ -588,16 +626,19 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
             templatesMap.get(key).records.push(row);
           });
 
-          const templatesArray = Array.from(templatesMap.entries()).map(([key, val], idx) => ({
+          let templatesArray = Array.from(templatesMap.entries()).map(([key, val], idx) => ({
             templateId: `template_${idx}`,
             key,
             fields: val.fields,
             records: val.records
           }));
 
+          // Merge kv-type templates by context
+          templatesArray = mergeKvTemplates(templatesArray);
+
           setAggregatedTemplates(templatesArray);
 
-          // Cache aggregated templates as part of extraction cache
+          // Cache merged templates as part of extraction cache
           setCachedResults(prev => ({
             ...prev,
             extraction: {

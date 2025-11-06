@@ -1,0 +1,248 @@
+import React, { useState, useEffect } from 'react';
+import Cost from '../processing/Cost';
+
+const DataDisplay = ({ data, cost }) => {
+  const [processedData, setProcessedData] = useState([]);
+  const [expandedDetails, setExpandedDetails] = useState({});
+  const [originalOrder, setOriginalOrder] = useState({});
+
+  useEffect(() => {
+    if (!data) {
+      console.log("No data provided");
+      setProcessedData([]);
+      return;
+    }
+
+    try {
+      console.log("Data received:", data);
+      
+      // Extract data from response
+      let actualData = data;
+      
+      // Check for nested data structures
+      if (data.extractedData) {
+        actualData = data.extractedData;
+      } else if (data.data) {
+        actualData = data.data;
+      } else if (data.results) {
+        actualData = data.results;
+      }
+
+      console.log("Actual data after extraction:", actualData);
+
+      // Handle string data
+      let processedJson = actualData;
+      if (typeof actualData === 'string') {
+        try {
+          processedJson = JSON.parse(actualData);
+        } catch (e) {
+          console.error("Failed to parse data string:", e);
+          return;
+        }
+      }
+
+      console.log("Processed JSON before normalization:", processedJson);
+
+      // Initialize templates map
+      let templates = new Map();
+      let normalizedData = [];
+
+      // Process Investigations_Redacted_modified data
+      if (processedJson.Investigations_Redacted_modified) {
+        const records = processedJson.Investigations_Redacted_modified;
+        
+        if (Array.isArray(records)) {
+          // First pass: Identify unique templates
+          records.forEach(record => {
+            if (record && typeof record === 'object') {
+              const keys = Object.keys(record).sort().join(',');
+              if (!templates.has(keys)) {
+                templates.set(keys, {
+                  fields: keys.split(','),
+                  records: []
+                });
+              }
+              templates.get(keys).records.push(record);
+            }
+          });
+
+          // Convert templates to normalized format
+          normalizedData = Array.from(templates.entries()).map(([templateKey, template], index) => {
+            const fields = template.fields;
+            const records = template.records;
+
+            return {
+              id: index,
+              templateId: templateKey,
+              content: [{
+                type: 'table',
+                content: records.map(record => {
+                  const normalizedRecord = {};
+                  fields.forEach(field => {
+                    normalizedRecord[field] = record[field] || 'N/A';
+                  });
+                  return normalizedRecord;
+                })
+              }]
+            };
+          });
+        }
+      }
+
+      console.log("Templates found:", templates.size);
+      console.log("Normalized data:", normalizedData);
+      
+      setProcessedData(normalizedData);
+    } catch (error) {
+      console.error("Error processing data:", error);
+      setProcessedData([]);
+    }
+  }, [data]);
+
+  const toggleDetails = (templateIndex) => {
+    setExpandedDetails(prev => ({
+      ...prev,
+      [templateIndex]: !prev[templateIndex]
+    }));
+  };
+
+  const renderTableContent = (records, templateIndex) => {
+    if (!Array.isArray(records) || records.length === 0) {
+      return <div>No records available</div>;
+    }
+
+    const columns = Object.keys(records[0]);
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              {columns.map((header) => (
+                <th
+                  key={header}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  {header.replace(/_/g, ' ')}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {records.map((record, rowIndex) => (
+              <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                {columns.map((column) => (
+                  <td key={column} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {record[column] || 'N/A'}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const handleDownload = () => {
+    try {
+      if (!processedData || processedData.length === 0) {
+        console.error("No data to download");
+        return;
+      }
+
+      const downloadData = {
+        templates: processedData.map(template => ({
+          templateId: template.templateId,
+          records: template.content[0].content
+        }))
+      };
+
+      const blob = new Blob([JSON.stringify(downloadData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'extracted_data_by_template.json';
+      document.body.appendChild(a);
+      a.click();
+
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (e) {
+      console.error("Failed to download data:", e);
+    }
+  };
+
+  if (!processedData || processedData.length === 0) {
+    return <div className="text-gray-500">No data available</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-xl font-bold">Extracted Data</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            {processedData.length} unique template{processedData.length !== 1 ? 's' : ''} found
+          </p>
+        </div>
+        <button
+          onClick={handleDownload}
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+        >
+          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Download Templated Data
+        </button>
+      </div>
+
+      {processedData.map((template, templateIndex) => (
+        <div key={`template-${templateIndex}`} className="mb-10 pb-6 border-b border-gray-200">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">
+                Template {templateIndex + 1}
+              </h3>
+              <p className="text-sm text-gray-500">
+                {template.content[0].content.length} records found
+              </p>
+            </div>
+            <button 
+              onClick={() => toggleDetails(templateIndex)}
+              className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
+            >
+              {expandedDetails[templateIndex] ? 'Hide Details' : 'View Details'}
+              <svg className={`ml-1 h-4 w-4 transform ${expandedDetails[templateIndex] ? 'rotate-180' : ''}`} fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+
+          {expandedDetails[templateIndex] && (
+            <div className="space-y-4">
+              <div className="bg-white border rounded-lg shadow-sm">
+                <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
+                  <h4 className="font-medium text-gray-700">
+                    Records matching this template
+                  </h4>
+                  <span className="text-sm text-gray-500">
+                    {template.content[0].content.length} records
+                  </span>
+                </div>
+                <div className="p-4">
+                  {renderTableContent(template.content[0].content, templateIndex)}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {cost && <Cost cost={cost} />}
+    </div>
+  );
+};
+
+export default DataDisplay;
