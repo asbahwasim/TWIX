@@ -71,6 +71,7 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
   const [stageIndividualCosts, setStageIndividualCosts] = useState({ phrase: null, field: null, template: null, extraction: null });
   const [totalCumulativeCost, setTotalCumulativeCost] = useState(0);
   const [showUnifiedDashboard, setShowUnifiedDashboard] = useState(false);
+  const [pdfViewerWidth, setPdfViewerWidth] = useState(400); // State for resizable PDF viewer
   
   // Add caching for already processed stages
   const [cachedResults, setCachedResults] = useState({
@@ -193,6 +194,29 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
       apiFunction: extractData
     }
   ];
+
+  // PDF Viewer resize handlers
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const handleMouseMove = (e) => {
+    const newWidth = e.clientX - 48; // Subtract padding/margin
+    if (newWidth >= 250 && newWidth <= 800) {
+      setPdfViewerWidth(newWidth);
+    }
+  };
+
+  const handleMouseUp = () => {
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  };
 
   // Download handlers for extraction stage
   const handleDownloadAggregated = () => {
@@ -963,10 +987,10 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
 
           {/* Data Display */}
           {activeStage === 'extraction' && processedData && (
-            <div className="flex gap-6">
-              {/* PDF Viewer - Left Side */}
-              <div className="w-1/3 min-w-[300px] max-w-[500px]">
-                <div className="sticky top-4">
+            <div className="flex gap-0">
+              {/* PDF Viewer - Left Side (Resizable) */}
+              <div style={{ width: pdfViewerWidth, minWidth: 250, maxWidth: 800, flexShrink: 0 }}>
+                <div className="sticky top-4 pr-4">
                   <h3 className="text-lg font-semibold text-gray-800 mb-3">PDF Preview</h3>
                   <div className="border rounded-lg overflow-hidden bg-gray-50 shadow-sm">
                     {files && files.length > 0 ? (
@@ -986,8 +1010,17 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
                 </div>
               </div>
 
+              {/* Resizable Divider */}
+              <div
+                onMouseDown={handleMouseDown}
+                className="w-2 cursor-col-resize hover:bg-blue-200 active:bg-blue-300 transition-colors flex-shrink-0 relative group"
+                style={{ marginLeft: -4, marginRight: -4 }}
+              >
+                <div className="absolute inset-y-0 left-1/2 w-0.5 bg-gray-300 group-hover:bg-blue-400" />
+              </div>
+
               {/* Data Display - Right Side */}
-              <div className="flex-1">
+              <div className="flex-1 pl-4">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-semibold text-gray-800">View Options</h3>
                   <div className="flex items-center gap-2">
