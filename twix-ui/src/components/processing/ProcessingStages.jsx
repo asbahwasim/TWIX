@@ -70,7 +70,7 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
   const [timerInterval, setTimerInterval] = useState(null);
   const [stageIndividualCosts, setStageIndividualCosts] = useState({ phrase: null, field: null, template: null, extraction: null });
   const [totalCumulativeCost, setTotalCumulativeCost] = useState(0);
-  const [showUnifiedDashboard, setShowUnifiedDashboard] = useState(false);
+  // Removed Unified Dashboard state
   const [pdfViewerWidth, setPdfViewerWidth] = useState(400); // State for resizable PDF viewer
   
   // Add caching for already processed stages
@@ -987,7 +987,7 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
 
           {/* Data Display */}
           {activeStage === 'extraction' && processedData && (
-            <div className="flex gap-0">
+            <div className="flex gap-0 w-full overflow-hidden">
               {/* PDF Viewer - Left Side (Resizable) */}
               <div style={{ width: pdfViewerWidth, minWidth: 250, maxWidth: 800, flexShrink: 0 }}>
                 <div className="sticky top-4 pr-4">
@@ -1020,21 +1020,10 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
               </div>
 
               {/* Data Display - Right Side */}
-              <div className="flex-1 pl-4">
+              <div className="flex-1 min-w-0 pl-4 overflow-auto">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-semibold text-gray-800">View Options</h3>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowUnifiedDashboard(!showUnifiedDashboard)}
-                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                        showUnifiedDashboard
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      {showUnifiedDashboard ? 'Standard View' : 'Unified Dashboard'}
-                    </button>
-
                     <button
                       onClick={handleDownloadAggregated}
                       className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
@@ -1054,16 +1043,7 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
                     <ConstructByExampleButton />
                   </div>
                 </div>
-                
-                {showUnifiedDashboard ? (
-                  <UnifiedDashboard
-                    extractedData={processedData}
-                    templateData={templateData || editedTemplate}
-                    pdfUrl={files && files.length > 0 ? URL.createObjectURL(files[0]) : null}
-                  />
-                ) : (
-                  <DataDisplay data={processedData} aggregatedTemplates={aggregatedTemplates} cost={totalCumulativeCost} />
-                )}
+                <DataDisplay data={processedData} aggregatedTemplates={aggregatedTemplates} cost={totalCumulativeCost} />
               </div>
             </div>
           )}
@@ -1094,6 +1074,23 @@ function ConstructByExampleButton() {
 function ConstructByExampleModal({ onClose }) {
   const initialTable = useMemo(() => Array.from({ length: 10 }, () => Array(10).fill('')), []);
   const [table, setTable] = useState(initialTable);
+
+  // Add Row
+  const handleAddRow = () => {
+    setTable(prev => [...prev, Array(prev[0].length).fill('')]);
+  };
+  // Add Column
+  const handleAddColumn = () => {
+    setTable(prev => prev.map(row => [...row, '']));
+  };
+  // Delete Row (except header)
+  const handleDeleteRow = () => {
+    setTable(prev => prev.length > 2 ? prev.slice(0, -1) : prev); // keep at least header + 1 row
+  };
+  // Delete Column (except one col)
+  const handleDeleteColumn = () => {
+    setTable(prev => prev[0].length > 1 ? prev.map(row => row.slice(0, -1)) : prev);
+  };
 
   const handleCellChange = (rowIdx, colIdx, value) => {
     setTable(prev => {
@@ -1134,7 +1131,15 @@ function ConstructByExampleModal({ onClose }) {
     <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-lg p-6 w-[800px] max-w-full max-h-[90vh] overflow-auto">
         <h2 className="text-lg font-semibold mb-4">Construct-by-Example</h2>
-        
+
+        {/* Table Controls */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          <button className="px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs" onClick={handleAddRow}>Add Row</button>
+          <button className="px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs" onClick={handleAddColumn}>Add Column</button>
+          <button className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs" onClick={handleDeleteRow} disabled={table.length <= 2}>Delete Row</button>
+          <button className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs" onClick={handleDeleteColumn} disabled={table[0].length <= 1}>Delete Column</button>
+        </div>
+
         <div className="overflow-auto mb-4 border rounded-lg">
           <table className="min-w-full border-collapse">
             <tbody>
