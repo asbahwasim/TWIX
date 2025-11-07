@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import TemplateEditor from '../template/TemplateEditor';
 import DataDisplay from '../results/DataDisplay';
 import UnifiedDashboard from '../results/UnifiedDashboard';
@@ -963,52 +963,192 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
 
           {/* Data Display */}
           {activeStage === 'extraction' && processedData && (
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-800">View Options</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setShowUnifiedDashboard(!showUnifiedDashboard)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      showUnifiedDashboard
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                    }`}
-                  >
-                    {showUnifiedDashboard ? 'Standard View' : 'Unified Dashboard'}
-                  </button>
-
-                  <button
-                    onClick={handleDownloadAggregated}
-                    className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
-                    title="Download aggregated templates as JSON"
-                  >
-                    Download Aggregated
-                  </button>
-
-                  <button
-                    onClick={handleDownloadExtracted}
-                    className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm"
-                    title="Download raw extracted data as JSON"
-                  >
-                    Download Extracted
-                  </button>
+            <div className="flex gap-6">
+              {/* PDF Viewer - Left Side */}
+              <div className="w-1/3 min-w-[300px] max-w-[500px]">
+                <div className="sticky top-4">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-3">PDF Preview</h3>
+                  <div className="border rounded-lg overflow-hidden bg-gray-50 shadow-sm">
+                    {files && files.length > 0 ? (
+                      <iframe
+                        src={URL.createObjectURL(files[0])}
+                        title="PDF Preview"
+                        width="100%"
+                        height="700px"
+                        style={{ border: 'none' }}
+                      />
+                    ) : (
+                      <div className="p-8 text-gray-400 text-center">
+                        No PDF uploaded
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-              
-              {showUnifiedDashboard ? (
-                <UnifiedDashboard
-                  extractedData={processedData}
-                  templateData={templateData || editedTemplate}
-                  pdfUrl={files && files.length > 0 ? URL.createObjectURL(files[0]) : null}
-                />
-              ) : (
-                <DataDisplay data={processedData} aggregatedTemplates={aggregatedTemplates} cost={totalCumulativeCost} />
-              )}
+
+              {/* Data Display - Right Side */}
+              <div className="flex-1">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800">View Options</h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowUnifiedDashboard(!showUnifiedDashboard)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        showUnifiedDashboard
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      {showUnifiedDashboard ? 'Standard View' : 'Unified Dashboard'}
+                    </button>
+
+                    <button
+                      onClick={handleDownloadAggregated}
+                      className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                      title="Download aggregated templates as JSON"
+                    >
+                      Download Aggregated
+                    </button>
+
+                    <button
+                      onClick={handleDownloadExtracted}
+                      className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm"
+                      title="Download raw extracted data as JSON"
+                    >
+                      Download Extracted
+                    </button>
+
+                    <ConstructByExampleButton />
+                  </div>
+                </div>
+                
+                {showUnifiedDashboard ? (
+                  <UnifiedDashboard
+                    extractedData={processedData}
+                    templateData={templateData || editedTemplate}
+                    pdfUrl={files && files.length > 0 ? URL.createObjectURL(files[0]) : null}
+                  />
+                ) : (
+                  <DataDisplay data={processedData} aggregatedTemplates={aggregatedTemplates} cost={totalCumulativeCost} />
+                )}
+              </div>
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// --- Construct-by-Example Components ---
+function ConstructByExampleButton() {
+  const [open, setOpen] = useState(false);
+  
+  return (
+    <>
+      <button
+        className="px-3 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
+        onClick={() => setOpen(true)}
+        title="Use Construct-by-Example to create your desired output table format."
+      >
+        Construct-by-Example
+      </button>
+      {open && <ConstructByExampleModal onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function ConstructByExampleModal({ onClose }) {
+  const initialTable = useMemo(() => Array.from({ length: 10 }, () => Array(10).fill('')), []);
+  const [table, setTable] = useState(initialTable);
+
+  const handleCellChange = (rowIdx, colIdx, value) => {
+    setTable(prev => {
+      const updated = prev.map(row => [...row]);
+      updated[rowIdx][colIdx] = value;
+      return updated;
+    });
+  };
+
+  const handleSave = () => {
+    const headers = table[0].filter(h => h.trim() !== '');
+    if (headers.length === 0) {
+      alert('Please add at least one header in the first row.');
+      return;
+    }
+
+    const rows = table.slice(1).filter(row => row.some(cell => cell.trim() !== ''));
+    const result = rows.map(row => {
+      const obj = {};
+      headers.forEach((h, i) => {
+        obj[h] = row[i] || '';
+      });
+      return obj;
+    });
+
+    const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'constructed_example.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleClear = () => setTable(initialTable);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-lg p-6 w-[800px] max-w-full max-h-[90vh] overflow-auto">
+        <h2 className="text-lg font-semibold mb-4">Construct-by-Example</h2>
+        
+        <div className="overflow-auto mb-4 border rounded-lg">
+          <table className="min-w-full border-collapse">
+            <tbody>
+              {table.map((row, rowIdx) => (
+                <tr key={rowIdx}>
+                  {row.map((cell, colIdx) => (
+                    <td key={colIdx} className={`border p-1 ${rowIdx === 0 ? 'bg-gray-100 font-bold' : ''}`}>
+                      <input
+                        type="text"
+                        value={cell}
+                        onChange={e => handleCellChange(rowIdx, colIdx, e.target.value)}
+                        className="w-20 px-2 py-1 rounded border focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={rowIdx === 0 ? `Header ${colIdx + 1}` : ''}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex gap-2 justify-end">
+          <button
+            className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            onClick={handleSave}
+          >
+            Save Example
+          </button>
+          <button
+            className="px-3 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+            onClick={handleClear}
+          >
+            Clear Table
+          </button>
+          <button
+            className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-2 text-sm text-gray-500">
+          Fill the first row with headers, then add example values below. Save to download as JSON.
+        </div>
+      </div>
     </div>
   );
 }
