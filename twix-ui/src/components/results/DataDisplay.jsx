@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Cost from '../processing/Cost';
+import SequentialView from './SequentialView';
 
 const DataDisplay = ({ data, cost, aggregatedTemplates }) => {
   const [processedData, setProcessedData] = useState([]);
@@ -308,15 +309,16 @@ const DataDisplay = ({ data, cost, aggregatedTemplates }) => {
 
       {/* Sequential View: Show extracted data in original order/hierarchy */}
       {viewMode === 'sequential' && (
-        <div className="mb-10 pb-6 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Sequential View</h3>
-          {/* Render each record in originalOrderData as JSON tree or table */}
-          {originalOrderData.map((record, idx) => (
-            <div key={`seq-record-${idx}`} className="mb-6">
-              <pre className="bg-gray-50 p-4 rounded text-xs overflow-x-auto border">{JSON.stringify(record, null, 2)}</pre>
-            </div>
-          ))}
-        </div>
+        // <div className="mb-10 pb-6 border-b border-gray-200">
+        //   <h3 className="text-lg font-semibold text-gray-800 mb-4">Sequential View</h3>
+        //   {/* Render each record in originalOrderData as JSON tree or table */}
+        //   {originalOrderData.map((record, idx) => (
+        //     <div key={`seq-record-${idx}`} className="mb-6">
+        //       <pre className="bg-gray-50 p-4 rounded text-xs overflow-x-auto border">{JSON.stringify(record, null, 2)}</pre>
+        //     </div>
+        //   ))}
+        // </div>
+        <SequentialView data={data} />
       )}
 
       {cost && <Cost cost={cost} />}
