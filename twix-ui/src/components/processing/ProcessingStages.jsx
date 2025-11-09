@@ -17,10 +17,8 @@ import {
 
 // Utility: Merge kv-type templates by context/grouping
 function mergeKvTemplates(templates) {
-  // Heuristic: kv-type templates have few fields and share a context key (e.g., "Complainant", "DOB", "Gender", etc.)
-  // Group by context key (first field or a known context field)
-  // Identify kv-type templates (by id or known keys)
-  const kvTemplateIds = ["kv_Complainant", "kv_DOB", "kv_Gender", "kv_Address", "kv_H Phone"];
+  // Merge template_1 through template_5 (kv-type) into a single template
+  const kvTemplateIds = ["template_1", "template_2", "template_3", "template_4", "template_5"];
   const kvTemplates = templates.filter(tpl => kvTemplateIds.includes(tpl.templateId));
   const nonKvTemplates = templates.filter(tpl => !kvTemplateIds.includes(tpl.templateId));
 
@@ -43,7 +41,7 @@ function mergeKvTemplates(templates) {
   }
 
   const mergedKvTemplate = {
-    templateId: "template_kv",
+    templateId: "template_1_5_kv_merged",
     key: allFields.join(","),
     fields: allFields,
     records: mergedRecords
@@ -53,6 +51,7 @@ function mergeKvTemplates(templates) {
 }
 
 function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disabled, files }) {
+  const [showConstructByExample, setShowConstructByExample] = useState(false);
   const [templateData, setTemplateData] = useState(null);
   const [editedTemplate, setEditedTemplate] = useState(null);
   const [textContent, setTextContent] = useState('');
@@ -1019,31 +1018,48 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
                 <div className="absolute inset-y-0 left-1/2 w-0.5 bg-gray-300 group-hover:bg-blue-400" />
               </div>
 
-              {/* Data Display - Right Side */}
-              <div className="flex-1 min-w-0 pl-4 overflow-auto">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold text-gray-800">View Options</h3>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleDownloadAggregated}
-                      className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
-                      title="Download aggregated templates as JSON"
-                    >
-                      Download Aggregated
-                    </button>
+              {/* Data Display & Construct-by-Example Side by Side */}
+              <div className="flex-1 min-w-0 pl-4 overflow-auto flex gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">View Options</h3>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleDownloadAggregated}
+                        className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                        title="Download aggregated templates as JSON"
+                      >
+                        Download Aggregated
+                      </button>
 
-                    <button
-                      onClick={handleDownloadExtracted}
-                      className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm"
-                      title="Download raw extracted data as JSON"
-                    >
-                      Download Extracted
-                    </button>
+                      <button
+                        onClick={handleDownloadExtracted}
+                        className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm"
+                        title="Download raw extracted data as JSON"
+                      >
+                        Download Extracted
+                      </button>
 
-                    <ConstructByExampleButton />
+                      <button
+                        className="px-3 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
+                        onClick={() => setShowConstructByExample(true)}
+                        title="Use Construct-by-Example to create your desired output table format."
+                      >
+                        Construct-by-Example
+                      </button>
+                    </div>
                   </div>
+                  <DataDisplay data={processedData} aggregatedTemplates={aggregatedTemplates} cost={totalCumulativeCost} />
                 </div>
-                <DataDisplay data={processedData} aggregatedTemplates={aggregatedTemplates} cost={totalCumulativeCost} />
+                {/* Construct-by-Example Table as Side Panel, only if open */}
+                {showConstructByExample && (
+                  <div className="w-[420px] max-w-full">
+                    <div className="bg-white rounded-lg shadow-lg p-4 border">
+                      <h2 className="text-lg font-semibold mb-2">Construct-by-Example</h2>
+                      <ConstructByExampleModal onClose={() => setShowConstructByExample(false)} />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1054,22 +1070,6 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
 }
 
 // --- Construct-by-Example Components ---
-function ConstructByExampleButton() {
-  const [open, setOpen] = useState(false);
-  
-  return (
-    <>
-      <button
-        className="px-3 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
-        onClick={() => setOpen(true)}
-        title="Use Construct-by-Example to create your desired output table format."
-      >
-        Construct-by-Example
-      </button>
-      {open && <ConstructByExampleModal onClose={() => setOpen(false)} />}
-    </>
-  );
-}
 
 function ConstructByExampleModal({ onClose }) {
   const initialTable = useMemo(() => Array.from({ length: 10 }, () => Array(10).fill('')), []);
@@ -1128,64 +1128,62 @@ function ConstructByExampleModal({ onClose }) {
   const handleClear = () => setTable(initialTable);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg p-6 w-[800px] max-w-full max-h-[90vh] overflow-auto">
-        <h2 className="text-lg font-semibold mb-4">Construct-by-Example</h2>
+    <div className="bg-white rounded-lg shadow-lg p-4 border w-full max-w-full max-h-[90vh] flex flex-col">
+      <h2 className="text-lg font-semibold mb-4">Construct-by-Example</h2>
 
-        {/* Table Controls */}
-        <div className="flex flex-wrap gap-2 mb-3">
-          <button className="px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs" onClick={handleAddRow}>Add Row</button>
-          <button className="px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs" onClick={handleAddColumn}>Add Column</button>
-          <button className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs" onClick={handleDeleteRow} disabled={table.length <= 2}>Delete Row</button>
-          <button className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs" onClick={handleDeleteColumn} disabled={table[0].length <= 1}>Delete Column</button>
-        </div>
+      {/* Table Controls */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        <button className="px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs" onClick={handleAddRow}>Add Row</button>
+        <button className="px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs" onClick={handleAddColumn}>Add Column</button>
+        <button className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs" onClick={handleDeleteRow} disabled={table.length <= 2}>Delete Row</button>
+        <button className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs" onClick={handleDeleteColumn} disabled={table[0].length <= 1}>Delete Column</button>
+      </div>
 
-        <div className="overflow-auto mb-4 border rounded-lg">
-          <table className="min-w-full border-collapse">
-            <tbody>
-              {table.map((row, rowIdx) => (
-                <tr key={rowIdx}>
-                  {row.map((cell, colIdx) => (
-                    <td key={colIdx} className={`border p-1 ${rowIdx === 0 ? 'bg-gray-100 font-bold' : ''}`}>
-                      <input
-                        type="text"
-                        value={cell}
-                        onChange={e => handleCellChange(rowIdx, colIdx, e.target.value)}
-                        className="w-20 px-2 py-1 rounded border focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder={rowIdx === 0 ? `Header ${colIdx + 1}` : ''}
-                      />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="overflow-auto mb-4 border rounded-lg flex-1">
+        <table className="min-w-full border-collapse">
+          <tbody>
+            {table.map((row, rowIdx) => (
+              <tr key={rowIdx}>
+                {row.map((cell, colIdx) => (
+                  <td key={colIdx} className={`border p-1 ${rowIdx === 0 ? 'bg-gray-100 font-bold' : ''}`}>
+                    <input
+                      type="text"
+                      value={cell}
+                      onChange={e => handleCellChange(rowIdx, colIdx, e.target.value)}
+                      className="w-20 px-2 py-1 rounded border focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder={rowIdx === 0 ? `Header ${colIdx + 1}` : ''}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-        <div className="flex gap-2 justify-end">
-          <button
-            className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            onClick={handleSave}
-          >
-            Save Example
-          </button>
-          <button
-            className="px-3 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
-            onClick={handleClear}
-          >
-            Clear Table
-          </button>
-          <button
-            className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-            onClick={onClose}
-          >
-            Close
-          </button>
-        </div>
+      <div className="flex gap-2 justify-end mt-2">
+        <button
+          className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          onClick={handleSave}
+        >
+          Save Example
+        </button>
+        <button
+          className="px-3 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+          onClick={handleClear}
+        >
+          Clear Table
+        </button>
+        <button
+          className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+          onClick={onClose}
+        >
+          Close
+        </button>
+      </div>
 
-        <div className="mt-2 text-sm text-gray-500">
-          Fill the first row with headers, then add example values below. Save to download as JSON.
-        </div>
+      <div className="mt-2 text-sm text-gray-500">
+        Fill the first row with headers, then add example values below. Save to download as JSON.
       </div>
     </div>
   );

@@ -197,21 +197,21 @@ const EnhancedPDFTableLinker = ({ pdfFile, boundingBoxData, tableData }) => {
   const handleTextSelection = () => {
     const selection = window.getSelection();
     const text = selection.toString().trim();
-    
+
     console.log('Text selected in PDF:', text);
-    
+
     if (text) {
       setSelectedText(text);
       const matches = findMatchingRows(text);
       const bboxes = findBoundingBoxesForText(text);
-      
+
       console.log('Found', matches.length, 'matching rows');
       console.log('Found', bboxes.length, 'bounding boxes');
-      
+
       setMatchingRows(matches);
       setPdfHighlights(bboxes);
       setCurrentMatchIndex(0);
-      
+
       // Scroll to first match in table
       if (matches.length > 0) {
         scrollToTableRow(matches[0].rowIndex);
