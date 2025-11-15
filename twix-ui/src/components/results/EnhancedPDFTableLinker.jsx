@@ -14,7 +14,14 @@ import {
 // Set up PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
-const EnhancedPDFTableLinker = ({ pdfFile, boundingBoxData, tableData }) => {
+const EnhancedPDFTableLinker = ({ 
+  pdfFile, 
+  boundingBoxData, 
+  tableData,
+  initialCellValue = null,
+  initialRowIndex = null,
+  initialColumnKey = null 
+}) => {
   console.log('=== EnhancedPDFTableLinker RENDERED ===');
   console.log('pdfFile:', pdfFile);
   console.log('boundingBoxData:', boundingBoxData);
@@ -22,6 +29,9 @@ const EnhancedPDFTableLinker = ({ pdfFile, boundingBoxData, tableData }) => {
   console.log('boundingBoxData is array?:', Array.isArray(boundingBoxData));
   console.log('boundingBoxData length:', boundingBoxData?.length);
   console.log('tableData length:', tableData?.length);
+  console.log('initialCellValue:', initialCellValue);
+  console.log('initialRowIndex:', initialRowIndex);
+  console.log('initialColumnKey:', initialColumnKey);
   
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -37,6 +47,7 @@ const EnhancedPDFTableLinker = ({ pdfFile, boundingBoxData, tableData }) => {
     pageSize: 10,
   });
   const [searchQuery, setSearchQuery] = useState('');
+  const [initialHighlightTriggered, setInitialHighlightTriggered] = useState(false);
   
   const tableRef = useRef(null);
   const pdfContainerRef = useRef(null);
@@ -55,47 +66,58 @@ const EnhancedPDFTableLinker = ({ pdfFile, boundingBoxData, tableData }) => {
       return [];
     }
     
-    console.log('Parsing', boundingBoxData.length, 'bounding boxes');
-    console.log('Raw bounding box data sample:', boundingBoxData.slice(0, 2));
+    console.log('Parsing bounding box data with', boundingBoxData.length, 'pages');
     
-    const parsed = boundingBoxData
-      .map((item, index) => {
-        const bbox = {
-          text: item.text || item[0] || '',  // Try item.text or first element
-          x0: parseFloat(item.x0 || item[1]),
-          y0: parseFloat(item.y0 || item[2]),
-          x1: parseFloat(item.x1 || item[3]),
-          y1: parseFloat(item.y1 || item[4]),
-          page: parseInt(item.page || item[5]) || 1
-        };
+    // Extract all bounding boxes from the nested structure
+    const allBoundingBoxes = [];
+    
+    boundingBoxData.forEach((page, pageIndex) => {
+      if (!page.content || !Array.isArray(page.content)) return;
+      
+      page.content.forEach((section) => {
+        if (!section.content || !Array.isArray(section.content)) return;
         
-        // Log first few for debugging
-        if (index < 5) {
-          console.log(`Bounding box ${index}:`, bbox, 'from raw:', item);
-        }
-        
-        return bbox;
+        section.content.forEach((row) => {
+          // Each row has fields like "Date", "Number", etc.
+          Object.entries(row).forEach(([fieldName, fieldData]) => {
+            // Skip special fields like "bb" (bounding box for entire row)
+            if (fieldName === 'bb' || !fieldData) return;
+            
+            // Extract value and bounding box
+            if (fieldData.value && fieldData.bounding_box && Array.isArray(fieldData.bounding_box)) {
+              const bbox = fieldData.bounding_box;
+              
+              // Only process if value is not "missing" and has valid bbox
+              if (fieldData.value !== 'missing' && bbox.length === 4) {
+                allBoundingBoxes.push({
+                  text: String(fieldData.value).trim(),
+                  x0: parseFloat(bbox[0]),
+                  y0: parseFloat(bbox[1]),
+                  x1: parseFloat(bbox[2]),
+                  y1: parseFloat(bbox[3]),
+                  page: parseInt(fieldData.page) || (pageIndex + 1),
+                  fieldName: fieldName
+                });
+              }
+            }
+          });
+        });
       });
+    });
     
-    console.log('Before filtering:', parsed.length, 'boxes');
+    console.log('Extracted', allBoundingBoxes.length, 'bounding boxes from nested structure');
     
     // Filter out invalid bounding boxes
-    const filtered = parsed.filter((bbox, index) => {
+    const filtered = allBoundingBoxes.filter((bbox, index) => {
       const isValid = 
-        bbox.text.trim().length > 0 &&  // Has text
+        bbox.text.length > 0 &&  // Has text
         !isNaN(bbox.x0) && !isNaN(bbox.y0) && !isNaN(bbox.x1) && !isNaN(bbox.y1) && // Valid coordinates
         bbox.x0 >= 0 && bbox.y0 >= 0 &&  // Positive coordinates
         bbox.x1 > bbox.x0 && bbox.y1 > bbox.y0;  // Valid dimensions
       
-      // Log why first invalid box is invalid
-      if (!isValid && index < 5) {
-        console.log(`Box ${index} is invalid:`, {
-          hasText: bbox.text.trim().length > 0,
-          validCoords: !isNaN(bbox.x0) && !isNaN(bbox.y0) && !isNaN(bbox.x1) && !isNaN(bbox.y1),
-          positiveCoords: bbox.x0 >= 0 && bbox.y0 >= 0,
-          validDimensions: bbox.x1 > bbox.x0 && bbox.y1 > bbox.y0,
-          bbox
-        });
+      // Log first few for debugging
+      if (index < 5) {
+        console.log(`Bounding box ${index}:`, bbox);
       }
       
       return isValid;
@@ -103,7 +125,7 @@ const EnhancedPDFTableLinker = ({ pdfFile, boundingBoxData, tableData }) => {
     
     console.log('Valid bounding boxes after filtering:', filtered.length);
     if (filtered.length > 0) {
-      console.log('Sample of unique texts:', [...new Set(filtered.slice(0, 20).map(b => b.text))]);
+      console.log('Sample texts:', filtered.slice(0, 10).map(b => b.text));
       console.log('First valid box:', filtered[0]);
     } else {
       console.error('NO VALID BOUNDING BOXES! All were filtered out.');
@@ -461,6 +483,47 @@ const EnhancedPDFTableLinker = ({ pdfFile, boundingBoxData, tableData }) => {
     setPdfHighlights([]);
     setSearchQuery('');
   };
+
+  // Auto-trigger highlighting when initial cell value is provided (for sequential view)
+  useEffect(() => {
+    if (initialCellValue && !initialHighlightTriggered && parsedBoundingBoxes.length > 0 && pdfLoaded) {
+      console.log('=== AUTO-TRIGGERING HIGHLIGHT FOR INITIAL CELL ===');
+      console.log('Initial cell value:', initialCellValue);
+      console.log('Initial row index:', initialRowIndex);
+      console.log('Initial column key:', initialColumnKey);
+      console.log('Parsed bounding boxes available:', parsedBoundingBoxes.length);
+      console.log('PDF loaded:', pdfLoaded);
+      
+      // Directly trigger highlighting logic
+      const searchText = String(initialCellValue);
+      setSelectedText(searchText);
+      setHighlightedCell(`${initialRowIndex}_${initialColumnKey}`);
+      
+      // Find in PDF
+      const bboxes = findBoundingBoxesForText(searchText);
+      console.log('Found', bboxes.length, 'bounding boxes for initial cell');
+      
+      if (bboxes.length > 0) {
+        console.log('First match details:', bboxes[0]);
+        setPdfHighlights(bboxes);
+        
+        // Jump to first occurrence in PDF
+        const firstMatch = bboxes[0];
+        setPageNumber(firstMatch.page);
+        
+        // Scroll to location with delay
+        setTimeout(() => {
+          console.log('Attempting to scroll to highlight...');
+          scrollToPDFHighlight(firstMatch);
+        }, 500);  // Increased delay to ensure PDF is fully rendered
+      } else {
+        console.warn('No bounding boxes found for:', searchText);
+        console.log('Available sample texts:', parsedBoundingBoxes.slice(0, 10).map(b => b.text));
+      }
+      
+      setInitialHighlightTriggered(true);
+    }
+  }, [initialCellValue, initialRowIndex, initialColumnKey, parsedBoundingBoxes, pdfLoaded, initialHighlightTriggered, findBoundingBoxesForText, scrollToPDFHighlight]);
 
   // Flatten table data for display
   const flattenedData = React.useMemo(() => {

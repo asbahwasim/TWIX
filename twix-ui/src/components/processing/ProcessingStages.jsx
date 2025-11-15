@@ -5,6 +5,7 @@ import DataDisplay from '../results/DataDisplay';
 import UnifiedDashboard from '../results/UnifiedDashboard';
 import BoundingBoxTable from '../pdf/BoundingBoxTable';
 import EnhancedPDFTableLinker from '../results/EnhancedPDFTableLinker';
+import PDFHighlighterPane from '../pdf/PDFHighlighterPane';
 import Cost from './Cost';
 import { 
   processPhrase, 
@@ -14,6 +15,8 @@ import {
   saveTemplate,
   cleanup 
 } from '../../services/api';
+
+import defaultBoundingBoxData from '../../Investigations_Redacted_modified_extracted_bb.json';
 
 // Utility: Merge kv-type templates by context/grouping
 function mergeKvTemplates(templates) {
@@ -70,7 +73,13 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
   const [stageIndividualCosts, setStageIndividualCosts] = useState({ phrase: null, field: null, template: null, extraction: null });
   const [totalCumulativeCost, setTotalCumulativeCost] = useState(0);
   // Removed Unified Dashboard state
-  const [pdfViewerWidth, setPdfViewerWidth] = useState(400); // State for resizable PDF viewer
+  const [pdfViewerWidth, setPdfViewerWidth] = useState(550); // State for resizable PDF viewer (wider by default)
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartXRef = useRef(0);
+  const resizeStartWidthRef = useRef(400);
+  const pdfIframeRef = useRef(null);
+  // Selected phrase to highlight in left PDF pane
+  const [leftHighlight, setLeftHighlight] = useState(null);
   
   // Add caching for already processed stages
   const [cachedResults, setCachedResults] = useState({
@@ -195,26 +204,49 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
   ];
 
   // PDF Viewer resize handlers
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
   const handleMouseDown = (e) => {
     e.preventDefault();
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    setIsResizing(true);
+    resizeStartXRef.current = e.clientX;
+    resizeStartWidthRef.current = pdfViewerWidth;
+    // Capture events globally and prevent text selection
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('blur', handleMouseUp);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-  };
-
-  const handleMouseMove = (e) => {
-    const newWidth = e.clientX - 48; // Subtract padding/margin
-    if (newWidth >= 250 && newWidth <= 800) {
-      setPdfViewerWidth(newWidth);
+    // Prevent iframe from stealing mouse events while dragging
+    if (pdfIframeRef.current) {
+      try { pdfIframeRef.current.style.pointerEvents = 'none'; } catch {}
     }
   };
 
+  const handleMouseMove = (e) => {
+    if (!isResizing) return;
+    const delta = e.clientX - resizeStartXRef.current;
+    const nextWidth = clamp(resizeStartWidthRef.current + delta, 250, 800);
+    setPdfViewerWidth(nextWidth);
+  };
+
   const handleMouseUp = () => {
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
+    if (!isResizing) return;
+    setIsResizing(false);
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', handleMouseUp);
+    window.removeEventListener('blur', handleMouseUp);
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
+    if (pdfIframeRef.current) {
+      try { pdfIframeRef.current.style.pointerEvents = 'auto'; } catch {}
+    }
+  };
+
+  // Handler to receive cell selections from the Sequential View
+  const handleCellSelect = (selection) => {
+    // selection: { value, rowIndex, columnKey, content }
+    setLeftHighlight(selection);
   };
 
   // Download handlers for extraction stage
@@ -993,17 +1025,15 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
                   <h3 className="text-lg font-semibold text-gray-800 mb-3">PDF Preview</h3>
                   <div className="border rounded-lg overflow-hidden bg-gray-50 shadow-sm">
                     {files && files.length > 0 ? (
-                      <iframe
-                        src={URL.createObjectURL(files[0])}
-                        title="PDF Preview"
-                        width="100%"
-                        height="700px"
-                        style={{ border: 'none' }}
+                      <PDFHighlighterPane
+                        pdfFile={files[0]}
+                        boundingBoxData={(boundingBoxData && boundingBoxData.length) ? boundingBoxData : (defaultBoundingBoxData || [])}
+                        targetValue={leftHighlight?.value}
+                        targetRowIndex={leftHighlight?.rowIndex}
+                        targetColumnKey={leftHighlight?.columnKey}
                       />
                     ) : (
-                      <div className="p-8 text-gray-400 text-center">
-                        No PDF uploaded
-                      </div>
+                      <div className="p-8 text-gray-400 text-center">No PDF uploaded</div>
                     )}
                   </div>
                 </div>
@@ -1018,44 +1048,56 @@ function ProcessingStages({ currentStage, onStageChange, onProcessingStart, disa
                 <div className="absolute inset-y-0 left-1/2 w-0.5 bg-gray-300 group-hover:bg-blue-400" />
               </div>
 
-              {/* Data Display & Construct-by-Example Side by Side */}
+              {/* Data Display & Construct-by-Example area */}
               <div className="flex-1 min-w-0 pl-4 overflow-auto flex gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-semibold text-gray-800">View Options</h3>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleDownloadAggregated}
-                        className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
-                        title="Download aggregated templates as JSON"
-                      >
-                        Download Aggregated
-                      </button>
+                {/* Show the main data view ONLY when Construct-by-Example is closed */}
+                {!showConstructByExample && (
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold text-gray-800">View Options</h3>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleDownloadAggregated}
+                          className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                          title="Download aggregated templates as JSON"
+                        >
+                          Download Aggregated
+                        </button>
 
-                      <button
-                        onClick={handleDownloadExtracted}
-                        className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm"
-                        title="Download raw extracted data as JSON"
-                      >
-                        Download Extracted
-                      </button>
+                        <button
+                          onClick={handleDownloadExtracted}
+                          className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm"
+                          title="Download raw extracted data as JSON"
+                        >
+                          Download Extracted
+                        </button>
 
-                      <button
-                        className="px-3 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
-                        onClick={() => setShowConstructByExample(true)}
-                        title="Use Construct-by-Example to create your desired output table format."
-                      >
-                        Construct-by-Example
-                      </button>
+                        <button
+                          className="px-3 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
+                          onClick={() => setShowConstructByExample(true)}
+                          title="Use Construct-by-Example to create your desired output table format."
+                        >
+                          Construct-by-Example
+                        </button>
+                      </div>
                     </div>
+                    <DataDisplay 
+                      data={processedData} 
+                      aggregatedTemplates={aggregatedTemplates} 
+                      cost={totalCumulativeCost}
+                      pdfFile={files && files.length > 0 ? files[0] : null}
+                      onCellSelect={handleCellSelect}
+                    />
                   </div>
-                  <DataDisplay data={processedData} aggregatedTemplates={aggregatedTemplates} cost={totalCumulativeCost} />
-                </div>
-                {/* Construct-by-Example Table as Side Panel, only if open */}
+                )}
+
+                {/* When Construct-by-Example is open, expand it to take the full right area */}
                 {showConstructByExample && (
-                  <div className="w-[420px] max-w-full">
+                  <div className="flex-1 min-w-0">
                     <div className="bg-white rounded-lg shadow-lg p-4 border">
-                      <h2 className="text-lg font-semibold mb-2">Construct-by-Example</h2>
+                      <div className="mb-2">
+                        <h2 className="text-lg font-semibold">Construct-by-Example</h2>
+                      </div>
                       <ConstructByExampleModal onClose={() => setShowConstructByExample(false)} />
                     </div>
                   </div>
